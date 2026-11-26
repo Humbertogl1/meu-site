@@ -4,7 +4,7 @@ function App() {
 
   const notas = [
     {
-      nf: "43809",
+      nf: "10222",
       fornecedor: "Premazon",
       material: "POSTE,CONC,DT,9M",
       valor: "R$ 350,00",
