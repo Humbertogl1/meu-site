@@ -1,108 +1,99 @@
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
+import { configurado, supabase } from './lib/supabase'
+import AuthPage from './components/AuthPage'
+import PendingApproval from './components/PendingApproval'
+import Dashboard from './components/Dashboard'
 
-function App() {
-
-  const notas = [
-    {
-      nf: "10222",
-      fornecedor: "Premazon",
-      material: "POSTE,CONC,DT,9M",
-      valor: "R$ 350,00",
-      status: "Regular"
-    },
-    {
-      nf: "43810",
-      fornecedor: "Incopostes",
-      material: "CRUZETA,CONC,1900MM",
-      valor: "R$ 137,13",
-      status: "Divergente"
-    },
-    {
-      nf: "0001",
-      fornecedor: "Fornecedor A",
-      material: "POSTE,CONC,12M",
-      valor: "R$ 600,00",
-      status: "Regular"
-    }
-  ]
-
-
-  return (
-    <div className="container">
-
-      <h1>
-        Dashboard de Notas Fiscais
-      </h1>
-
-      <p>
-        Análise de conformidade e divergências
-      </p>
-
-
-      <div className="cards">
-
-        <div className="card">
-          <h2>125</h2>
-          <span>Notas analisadas</span>
-        </div>
-
-
-        <div className="card">
-          <h2>8</h2>
-          <span>Divergências</span>
-        </div>
-
-
-        <div className="card">
-          <h2>94%</h2>
-          <span>Conformidade</span>
-        </div>
-
-      </div>
-
-
-      <h2>
-        Últimas Notas
-      </h2>
-
-
-      <table>
-
-        <thead>
-          <tr>
-            <th>NF</th>
-            <th>Fornecedor</th>
-            <th>Material</th>
-            <th>Valor</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-
-        <tbody>
-
-          {notas.map((nota) => (
-
-            <tr key={nota.nf}>
-
-              <td>{nota.nf}</td>
-              <td>{nota.fornecedor}</td>
-              <td>{nota.material}</td>
-              <td>{nota.valor}</td>
-              <td>{nota.status}</td>
-
-            </tr>
-
-          ))}
-
-        </tbody>
-
-      </table>
-
-
-    </div>
-  )
+function TelaCentral({ children }) {
+  return <div className="tela-central">{children}</div>
 }
 
+function App() {
+  // session: undefined = ainda carregando | null = deslogado | objeto = logado
+  const [session, setSession] = useState(undefined)
+  const [perfil, setPerfil] = useState(null)
+  const [carregandoPerfil, setCarregandoPerfil] = useState(false)
+  // guarda de qual usuário o perfil já foi carregado (evita "piscar" a tela errada)
+  const [perfilCarregadoPara, setPerfilCarregadoPara] = useState(null)
+
+  const userId = session?.user?.id
+  const aguardandoPerfil = Boolean(userId) && perfilCarregadoPara !== userId
+
+  // Acompanha o login/logout
+  useEffect(() => {
+    if (!configurado) {
+      setSession(null)
+      return
+    }
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_evento, novaSessao) => setSession(novaSessao))
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Busca o perfil (nome, se já foi aprovado, papel)
+  const carregarPerfil = useCallback(async () => {
+    if (!userId) {
+      setPerfil(null)
+      setPerfilCarregadoPara(null)
+      return
+    }
+    setCarregandoPerfil(true)
+    const { data } = await supabase
+      .from('profiles')
+      .select('nome, email, aprovado, papel')
+      .eq('id', userId)
+      .maybeSingle()
+    setPerfil(data)
+    setPerfilCarregadoPara(userId)
+    setCarregandoPerfil(false)
+  }, [userId])
+
+  useEffect(() => {
+    carregarPerfil()
+  }, [carregarPerfil])
+
+  const sair = () => supabase.auth.signOut()
+
+  if (!configurado) {
+    return (
+      <TelaCentral>
+        <div className="caixa-aviso">
+          <h2>Configuração pendente</h2>
+          <p>
+            Defina as variáveis <code>VITE_SUPABASE_URL</code> e{' '}
+            <code>VITE_SUPABASE_ANON_KEY</code> (no arquivo <code>.env</code> ou no painel da
+            Vercel) e publique novamente.
+          </p>
+        </div>
+      </TelaCentral>
+    )
+  }
+
+  if (session === undefined || aguardandoPerfil) {
+    return (
+      <TelaCentral>
+        <div className="carregando">Carregando…</div>
+      </TelaCentral>
+    )
+  }
+
+  if (!session) return <AuthPage />
+
+  if (!perfil?.aprovado) {
+    return (
+      <PendingApproval
+        email={perfil?.email || session.user.email}
+        carregando={carregandoPerfil}
+        onVerificar={carregarPerfil}
+        onSair={sair}
+      />
+    )
+  }
+
+  return <Dashboard perfil={perfil} onSair={sair} />
+}
 
 export default App
