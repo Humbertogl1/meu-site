@@ -18,7 +18,7 @@ function App() {
       status: "Divergente"
     },
     {
-      nf: "43811",
+      nf: "0001",
       fornecedor: "Fornecedor A",
       material: "POSTE,CONC,12M",
       valor: "R$ 600,00",
